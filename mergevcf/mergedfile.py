@@ -62,12 +62,12 @@ def bkptRefAltFromPair(loc1, loc2, refstr="N"):
 
 
 def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
-        filterByChromosome=True):
+        filterByChromosome=True, noFilter=False):
     """Merge several VCFs from different programs into a new VCF file."""
 
     # Returns true if the variant is PASS in the VCF file
     def passed_variant(record):
-        return record.FILTER is None or len(record.FILTER)==0
+        return record.FILTER is None or len(record.FILTER)==0 or noFilter
 
     def infoString(callers, infodict):
         infostring=""
