@@ -10,7 +10,7 @@ __symbolicRE__ = None
 __bpRE__ = None
 __looseendRE__ = None
 
-def setupREs():
+def setup_regexps():
     global __symbolicRE__
     global __bpRE__
     global __looseendRE__
@@ -20,7 +20,7 @@ def setupREs():
         __looseendRE__ = re.compile(r'[lL][oO][oO][sS][eE][eE][nN][dD]')
 
 def stdchrom(chrom):
-    if chrom[0]=='c':
+    if chrom[0] == 'c':
         return chrom[3:]
     else:
         return chrom
@@ -29,7 +29,7 @@ def orderBreakpoints(loc1, loc2):
     # already ordered?  Just return them
     if loc1 < loc2:
         return loc1, loc2
-    
+
     # Otherwise, swap and either flip strands (if different) or extents
     first, second = loc2, loc1
     if first.isRC():
@@ -47,10 +47,10 @@ def otherPosnSymbolic(info):
                 res = res[0]
         return res
 
-    fields = ['CHR2','END','CT','SVTYPE','SVLEN']
+    fields = ['CHR2', 'END', 'CT', 'SVTYPE', 'SVLEN']
     results = []
     for field in fields:
-        results.append( getIfPresent(field, info) )
+        results.append(getIfPresent(field, info))
 
     # handle chr2 specially
     if results[0] is not None:
@@ -75,7 +75,7 @@ def ctAndLocFromBkpt(ref, pre, delim1, pair, delim2, post):
     # length from record eg [9:1678896[N.
     # result is result from re.match with the explicit BP regexp
 
-    chpos=pair.split(':')
+    chpos = pair.split(':')
     chr2 = stdchrom(chpos[0])
     pos2 = int(chpos[1])
     assert delim1 == delim2  # '['..'[' or ']'...']'
@@ -84,7 +84,7 @@ def ctAndLocFromBkpt(ref, pre, delim1, pair, delim2, post):
     connectSeq = ""
 
     if len(pre) > 0:
-        connectSeq = pre 
+        connectSeq = pre
         joinedAfter = True
         assert len(post) == 0
     elif len(post) > 0:
@@ -108,40 +108,36 @@ def ctAndLocFromBkpt(ref, pre, delim1, pair, delim2, post):
             ct = '5to5'
         else:
             ct = '5to3'
-    
+
     return ct, chr2, pos2, indellen
 
 def translocation(chr1, pos1, chr2, pos2, ct):
-    secondStrand = "+"
-    firstExtendRight = False
-    secondExtendRight = True
+    second_strand = "+"
+    first_extend_right = False
+    second_extend_right = True
     if ct is None or ct == '3to5':
         pass
     elif ct == '5to3':
-        firstExtendRight = True; secondExtendRight = False
+        first_extend_right, second_extend_right = (True, False)
     elif ct == '5to5':
-        firstExtendRight = True; secondExtendRight = True; secondStrand = '-'
+        first_extend_right, second_extend_right, second_strand = (True, True, '-')
     elif ct == '3to3':
-        firstExtendRight =False; secondExtendRight =False; secondStrand = '-'
+        first_extend_right, second_extend_right, second_strand = (False, False, '-')
 
-    return ( loc.location(chr1, pos1, "+",          firstExtendRight), 
-             loc.location(chr2, pos2, secondStrand, secondExtendRight) )
+    return (loc.Location(chr1, pos1, "+", first_extend_right),
+            loc.Location(chr2, pos2, second_strand, second_extend_right))
 
-def breakpointsFromRecord(record):
+def breakpoints_fm_record(record):
     """Returns a list of pair(s) of breakpoints corresponding to the record."""
-    global __symbolicRE__
-    global __bpRE__
-    global __looseendRE__
-
     chr1, pos1 = stdchrom(record.CHROM), int(record.POS)
-    first = loc.location(chr1, pos1)
+    first = loc.Location(chr1, pos1)
 
     if record.ALT is None:
-        return [(first, loc.location(None,0,"+",True))]
+        return [(first, loc.Location(None, 0, "+", True))]
 
-    setupREs()
+    setup_regexps()
     ref = str(record.REF)
-    bkptPairs = []
+    breakpoint_pairs = []
 
     for alt in record.ALT:
         if alt is None:
@@ -149,7 +145,7 @@ def breakpointsFromRecord(record):
         else:
             altstr = str(alt)
 
-        # get all available information from the record 
+        # get all available information from the record
         chr2, pos2, ct, svtype, svlen = otherPosnSymbolic(record.INFO)
 
         # defaults
@@ -161,13 +157,14 @@ def breakpointsFromRecord(record):
         if resultSym:
             svtype = resultSym.group(1)
 
-        # explicit BP - look for chr2 and CT information from the alt field 
+        # explicit BP - look for chr2 and CT information from the alt field
         # (eg, N[chr2:123123[)
         resultBP = re.match(__bpRE__, altstr)
         if resultBP:
-            ct, chr2, pos2, indellen = ctAndLocFromBkpt(str(record.REF), resultBP.group(1),
-                    resultBP.group(2), resultBP.group(3), resultBP.group(4),
-                    resultBP.group(5))
+            ct, chr2, pos2, indellen = ctAndLocFromBkpt(str(record.REF),
+                                           resultBP.group(1), resultBP.group(2),
+                                           resultBP.group(3), resultBP.group(4),
+                                           resultBP.group(5))
             if svlen is None:
                 svlen = indellen
 
@@ -182,9 +179,9 @@ def breakpointsFromRecord(record):
             if ct is None:
                 ct = '3to5'
 
-        # if nothing else, treat as an indel 
+        # if nothing else, treat as an indel
         if not svtype and not resultBP and not resultLE and not resultSym:
-            reflen = len(ref)  
+            reflen = len(ref)
             if pos2 is None:
                 pos2 = pos1 + reflen
             if svlen is None:
@@ -194,39 +191,41 @@ def breakpointsFromRecord(record):
                     svtype = 'INS'
                 else:
                     svtype = 'DEL'
-        
+
         if svtype == "INV":
             assert chr1 == chr2
-            bkptPairs.append( translocation(chr1, pos1,   chr1, pos2-1, '3to3') )
-            bkptPairs.append( translocation(chr1, pos1+1, chr1, pos2,   '5to5') )
-        elif svtype in ["DUP:TANDEM","DUP"]:
+            breakpoint_pairs.append(translocation(chr1, pos1,   chr1, pos2-1, '3to3'))
+            breakpoint_pairs.append(translocation(chr1, pos1+1, chr1, pos2,   '5to5'))
+        elif svtype in ["DUP:TANDEM", "DUP"]:
             if chr2 is None:
                 chr2 = chr1
-            if ct is None or ct=="5to3" or ct=="3to5":
+            if ct is None or ct == "5to3" or ct == "3to5":
                 if pos1 > pos2:
                     pos1, pos2 = pos2, pos1
-                bkptPairs.append( translocation(chr1, pos1, chr2, pos2, "5to3") )
+                breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, "5to3"))
             else:
-                bkptPairs.append( translocation(chr1, pos1, chr2, pos2, ct) )
-        elif svtype in ["INS","INS:ME:L1"]:
+                breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, ct))
+        elif svtype in ["INS", "INS:ME:L1"]:
             assert chr1 == chr2
-            bkptPairs.append((first, loc.location(chr1, pos1+1, "+", True)))
-        elif svtype in ["DEL:ME:ALU","DEL"]:
+            breakpoint_pairs.append((first, loc.Location(chr1, pos1+1, "+", True)))
+        elif svtype in ["DEL:ME:ALU", "DEL"]:
             assert chr1 == chr2
-            bkptPairs.append( translocation(chr1, min(pos1,pos2), chr1, max(pos1,pos2), '3to5') )
+            breakpoint_pairs.append(translocation(chr1, min(pos1, pos2), chr1,
+                                           max(pos1, pos2), '3to5'))
         else:
             # translocation is the default
             if ct is None:
                 ct = "3to5"
-            if (svtype is not None) and (not svtype in ["TRA","BND"]):
-                print("Got unknown record of type", svtype, altstr, str(record), file=sys.stderr)
-                print("Hoping for best",file=sys.stderr)
-            bkptPairs.append( translocation(chr1, pos1, chr2, pos2, ct) )
+            if (svtype is not None) and (not svtype in ["TRA", "BND"]):
+                print("Got unknown record of type",
+                        svtype, altstr, str(record), file=sys.stderr)
+                print("Hoping for best", file=sys.stderr)
+            breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, ct))
 
-    orderedPairs = [orderBreakpoints(bp1,bp2) for bp1,bp2 in bkptPairs]
+    orderedPairs = [orderBreakpoints(bp1, bp2) for bp1, bp2 in breakpoint_pairs]
     return orderedPairs
 
-def addBkptToDictDict(bkpt, ld):
+def add_bkpt_to_dict_dict(bkpt, ld):
     if not bkpt is None:
         ld[bkpt] = 1
 
@@ -237,16 +236,16 @@ def bkptInDictDict(bkpt, ld):
         return False
 
 def vcftobkpts(infile, outfile, width):
-    firstbkpts = loc.locationdict(width)
-    pairbkpts  = loc.locationdict(width)
+    firstbkpts = loc.LocationDict(width)
+    pairbkpts = loc.LocationDict(width)
 
     reader = vcf.Reader(infile)
     for record in reader:
         if record.FILTER == "PASS" or record.FILTER == "." or record.FILTER is None or (type(record.FILTER) is list and len(record.FILTER) == 0):
-            bkptPairs = breakpointsFromRecord(record)
-            for pair in bkptPairs:
-                addBkptToDictDict(pair[0], firstbkpts)
-                addBkptToDictDict(pair[1], pairbkpts)
+            breakpoint_pairs = breakpoints_fm_record(record)
+            for pair in breakpoint_pairs:
+                add_bkpt_to_dict_dict(pair[0], firstbkpts)
+                add_bkpt_to_dict_dict(pair[1], pairbkpts)
 
     # count how many breakpoints weren't in both dicts, for diagnostics;
     # then add everything to first dict for outputting
@@ -258,13 +257,13 @@ def vcftobkpts(infile, outfile, width):
     for bp in pairbkpts:
         if not bkptInDictDict(bp, firstbkpts):
             nunmatched += 1
-            addBkptToDictDict(bp, firstbkpts)
+            add_bkpt_to_dict_dict(bp, firstbkpts)
 
-    print("#Num breakpoints not in both lists:",nunmatched,file=sys.stderr)
+    print("#Num breakpoints not in both lists:", nunmatched, file=sys.stderr)
 
     # now output everything
     for bp in firstbkpts:
-        chrom, pos, strand, extendsRight = bp.asTuple()
+        chrom, pos, _, _ = bp.asTuple()
         start = pos-width/2
         if start < 0:
             start = 0
@@ -274,10 +273,14 @@ def vcftobkpts(infile, outfile, width):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('infile', nargs='?', type=argparse.FileType('r'), default=sys.stdin)
-    parser.add_argument('outfile', nargs='?', type=argparse.FileType('w'), default=sys.stdout)
-    defwidth=300
-    parser.add_argument('-w','--width', type=int, help="width of breakpoint region: default("+str(defwidth)+")",default=defwidth)
+    parser.add_argument('infile', nargs='?', type=argparse.FileType('r'),
+                         default=sys.stdin)
+    parser.add_argument('outfile', nargs='?', type=argparse.FileType('w'),
+                         default=sys.stdout)
+    defwidth = 300
+    parser.add_argument('-w', '--width', type=int,
+                        help="width of breakpoint region: default("+str(defwidth)+")",
+                        default=defwidth)
 
     args = parser.parse_args()
-    sys.exit( vcftobkpts(args.infile,args.outfile,args.width ) )
+    sys.exit(vcftobkpts(args.infile, args.outfile, args.width))

@@ -1,59 +1,64 @@
+"""
+Functions to operate on merged VCF files and to perform the merge
+of multiple VCF files
+"""
 import vcf
 import variantdict
-import locations
-import sys
 
-def mappedToChromosome(chrom):
-    if chrom[0:2] in ["GL","MT","hs"] or chrom[0:1] == "M":
+def is_mapped_to_chromosome(chrom):
+    "Is the variant on a human chromosome or another contig?"
+    if chrom[0:2] in ["GL", "MT", "hs"] or chrom[0:1] == "M":
         return False
     return True
 
-def intIfPossible(s):
-    if type(s) is list:
-        s = s[0]
+def int_if_possible(stringval):
+    "Returns int representation of string if available"
+    if type(stringval) is list:
+        stringval = stringval[0]
     try:
-        i = int(s)
+        i = int(stringval)
     except ValueError:
-        i = s
+        i = stringval
     return i
 
-def makeInfoDict(records, pos1, pos2):
-    # generate 'median' results for info fields from all records
-    fields=['CHR2','END','SVTYPE','SVLEN']
+def make_info_dict(records, pos1, pos2):
+    """generate 'median' results for info fields from all records"""
+    fields = ['CHR2', 'END', 'SVTYPE', 'SVLEN']
     info = {}
     for field in fields:
         answers = []
         for record in records:
             if field in record.INFO:
-               answers.append(intIfPossible(record.INFO[field]))
+                answers.append(int_if_possible(record.INFO[field]))
         nanswers = len(answers)
         if nanswers > 0:
-            sortedAnswers = sorted(answers)
-            medianPos = nanswers/2    # don't quite deal with even #s correctly - can't average strings
-            medianAnswer = sortedAnswers[medianPos]
-            if not medianAnswer == 0:
-                info[field] = medianAnswer
+            sortedanswers = sorted(answers)
+            medianpos = nanswers/2
+            mediananswer = sortedanswers[medianpos]
+            if not mediananswer == 0:
+                info[field] = mediananswer
 
-    if 'SVTYPE' in info and info['SVTYPE'] in ['DUP','DUP:TANDEM','DEL','INV']:
+    if 'SVTYPE' in info and info['SVTYPE'] in ['DUP', 'DUP:TANDEM', 'DEL', 'INV']:
         if not 'SVLEN' in info:
             info['SVLEN'] = pos2-pos1
     return info
 
-def bkptRefAltFromPair(loc1, loc2, refstr="N"):
-    altAfter = loc1.__right__ == False
+def bkpt_ref_alt_from_pair(loc1, loc2, refstr="N"):
+    """Return the breakpoint-style ref-alt given two locations"""
+    altafter = loc1.__right__ == False
 
     if loc2 is None or loc2.__chrom__ is None:
         bkptstr = "."
     else:
         if loc2.__right__:
-            delim="["
+            delim = "["
         else:
-            delim="]"
+            delim = "]"
 
         assert loc2.__strand__ == (loc1.__right__ != loc2.__right__)
         bkptstr = "%s%s:%d%s" % (delim, loc2.__chrom__, loc2.__pos__, delim)
 
-    if altAfter:
+    if altafter:
         altstr = "%s%s" % (refstr, bkptstr)
     else:
         altstr = "%s%s" % (bkptstr, refstr)
@@ -62,16 +67,18 @@ def bkptRefAltFromPair(loc1, loc2, refstr="N"):
 
 
 def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
-        filterByChromosome=True, noFilter=False):
+          filter_chrom=True, no_filter_variants=False):
     """Merge several VCFs from different programs into a new VCF file."""
 
-    # Returns true if the variant is PASS in the VCF file
     def passed_variant(record):
-        return record.FILTER is None or len(record.FILTER)==0 or noFilter
+        """Returns true if the variant is PASS in the VCF file, 
+           or if we are not filtering"""
+        return record.FILTER is None or len(record.FILTER) == 0 or no_filter_variants
 
-    def infoString(callers, infodict):
-        infostring=""
-        fields=['CHR2','END','SVTYPE','SVLEN']
+    def info_string(callers, infodict):
+        """Generate an info string for merged records"""
+        infostring = ""
+        fields = ['CHR2', 'END', 'SVTYPE', 'SVLEN']
         for field in fields:
             if field in infodict:
                 res = infodict[field]
@@ -80,17 +87,17 @@ def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
                 infostring = infostring + ';'+field+'='+str(res)
         return "Callers="+",".join(list(set(callers)))+infostring
 
-    calldict = variantdict.variantmap(awindow=0,svwindow=slop)
+    calldict = variantdict.VariantMap(awindow=0, svwindow=slop)
     for (infile, program) in zip(filenames, programs):
         count = 0
         try:
-            vcf_reader=vcf.Reader(open(infile,'r'))
+            vcf_reader = vcf.Reader(open(infile, 'r'))
             for record in vcf_reader:
 
                 if not passed_variant(record):
                     continue
 
-                if filterByChromosome and not mappedToChromosome(record.CHROM):
+                if filter_chrom and not is_mapped_to_chromosome(record.CHROM):
                     continue
 
                 if verbose:
@@ -102,39 +109,42 @@ def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
 
                 calldict.addrecord(record, program, forceSV)
         except (RuntimeError, TypeError, NameError, AttributeError):
-            pass 
-    # Write the results in a master vcf file for the sample
+            pass
 
-    outfile.write("#CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO\n")
+    # Write the results in a master vcf file for the sample
+    outfile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
     for variant in calldict:
         if len(variant) == 3:   # snv/indel
             loc, allele, callers = variant
             if allele is None:
                 print "Allele is none: loc, allele, callers = ", loc, allele, callers
                 continue
-            chrom, pos, dmy1, dmy2 = loc.asTuple()
-            fields=[ chrom, str(pos), allele[0], allele[1] ]
-            vcfline="\t".join([fields[0], fields[1], ".", fields[2], fields[3], "255", "PASS", "Callers=" + ",".join(callers)])
+            chrom, pos, _, _ = loc.asTuple()
+            fields = [chrom, str(pos), allele[0], allele[1]]
+            vcfline = "\t".join([fields[0], fields[1], ".", fields[2],
+                                 fields[3], "255", "PASS",
+                                 "Callers=" + ",".join(callers)])
             outfile.write(vcfline + "\n")
         else:
-            loc1, loc2, callers, medianPos1, medianPos2, recordscalled = variant
-            if filterByChromosome and not mappedToChromosome(loc2.chrom):
+            loc1, loc2, callers, medianpos1, medianpos2, recordscalled = variant
+            if filter_chrom and not is_mapped_to_chromosome(loc2.chrom):
                 continue
 
-            records = [r for c,r in recordscalled]
+            records = [r for _, r in recordscalled]
 
-            avgloc1 = loc1.withPos(medianPos1)
-            avgloc2 = loc2.withPos(medianPos2)
-            ref, alt = bkptRefAltFromPair(avgloc1, avgloc2)
-            vcfline="\t".join([avgloc1.__chrom__, str(avgloc1.__pos__), '.',
-                ref, alt, '255','PASS', infoString(callers, makeInfoDict(records, medianPos1, medianPos2))])
+            avgloc1 = loc1.withPos(medianpos1)
+            avgloc2 = loc2.withPos(medianpos2)
+            ref, alt = bkpt_ref_alt_from_pair(avgloc1, avgloc2)
+            vcfline = "\t".join([avgloc1.__chrom__, str(avgloc1.__pos__), '.',
+                                 ref, alt, '255', 'PASS',
+                                 info_string(callers, make_info_dict(records, medianpos1, medianpos2))])
             outfile.write(vcfline + "\n")
-            for caller,rec in recordscalled:
+            for caller, rec in recordscalled:
                 outfile.write("#"+str(rec)+" ("+caller+")\n")
 
     outfile.close()
 
-def readMergedCalls(infile, filterByChromosome=True, readINFO=False, skipcallers=None):
+def read_merged_calls(infile, filter_chrom=True, skipcallers=None):
     """Read a merged callset, and return:
         - dictionary: caller name -> caller idx
         - callsets(list of lists): [calleridx][callidx]
@@ -151,7 +161,7 @@ def readMergedCalls(infile, filterByChromosome=True, readINFO=False, skipcallers
 
     for rec in invcf:
         ncalledthis = 0
-        if filterByChromosome and not mappedToChromosome(rec.CHROM):
+        if filter_chrom and not is_mapped_to_chromosome(rec.CHROM):
             continue
         callers = [c for c in rec.INFO['Callers'] if not c in skipcallers]
         called = []
@@ -169,10 +179,12 @@ def readMergedCalls(infile, filterByChromosome=True, readINFO=False, skipcallers
 
         assert len(called) == ncalledthis
         if ncalledthis > 0:
-            chrom     = rec.CHROM
-            posstart  = rec.POS
-            callIdxToCall.append((len(called), chrom, posstart, str(rec.REF), str(rec.ALT[0]), ",".join(called)))
+            chrom = rec.CHROM
+            posstart = rec.POS
+            callIdxToCall.append((len(called), chrom, posstart,
+                                  str(rec.REF), str(rec.ALT[0]),
+                                  ",".join(called)))
             callIdx += 1
-    
+
     return callerIdxDict, callsets, callIdxToCall
 

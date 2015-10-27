@@ -1,32 +1,41 @@
-from locations import *
+"""
+Define a variant map - a set of simple substitutions (SNVs, INDELs)
+in one LocationPairDict, and a set of SVs in another
+"""
+from locations import Location, LocationDict
 import vcf
-import itertools
 import vcftobreakpoints as svvcf
 
-def __checkvalidpairlocs__(t):
-    if type(t) is not tuple:
+def __checkvalidpairlocs__(candidate):
+    if type(candidate) is not tuple:
         return False
-    if len(t) != 2:
+    if len(candidate) != 2:
         return False
-    if type(t[0]) is location and type(t[1]) is location:
+    if type(candidate[0]) is Location and type(candidate[1]) is Location:
         return True
     return False
 
-class locationpairdict(object):
+class LocationPairDict(object):
+    """
+    Builds on locations.LocationDict, creates a dict of dicts
+    for a given Location _pairs_
+        dict[Location1][Location2] -> list of entries
+    """
     def __init__(self, window):
         self.__window = window
-        self.__lpdict = locationdict(self.__window)
+        self.__lpdict = LocationDict(self.__window)
 
     def __contains__(self, lpair):
         if not __checkvalidpairlocs__(lpair):
             raise KeyError("Required: tuple of locations")
-        locn1 = lpair[0]; locn2 = lpair[1]
+        locn1 = lpair[0]
+        locn2 = lpair[1]
         if not locn1 in self.__lpdict:
             return False
         return locn2 in self.__lpdict[locn1]
 
     def __getitem__(self, lpair):
-        if type(lpair) is location:
+        if type(lpair) is Location:
             return self.__lpdict[lpair]
 
         if not __checkvalidpairlocs__(lpair):
@@ -43,7 +52,7 @@ class locationpairdict(object):
         locn1 = lpair[0]
         locn2 = lpair[1]
         if not locn1 in self.__lpdict:
-            self.__lpdict[locn1] = locationdict(self.__window)
+            self.__lpdict[locn1] = LocationDict(self.__window)
         if not locn2 in self.__lpdict[locn1]:
             self.__lpdict[locn1][locn2] = []
         self.__lpdict[locn1][locn2].append(entry)
@@ -54,20 +63,31 @@ class locationpairdict(object):
     def __iter__(self):
         return self.__lpdict.__iter__()
 
-    def __next__(self):
-        return self.__lpdict.__next()
-    
+#    def __next__(self):
+#        return self.__lpdict.__next()
 
-class variantmap(object):
+
+class VariantMap(object):
+    """
+    Define a variant map - a set of simple substitutions (SNVs, INDELs)
+    in one LocationPairDict, and a set of SVs in another
+    """
     def __init__(self, awindow, svwindow):
         self.__awindow = awindow
         self.__svwindow = svwindow
 
-        self.__alleledict = locationdict(awindow)     # map locn -> allele (ref/alt)
-        self.__svdict = locationpairdict(svwindow)    # map locn -> locn (for SVs - paired breakpoints)
-        self.__locn1pos = locationpairdict(svwindow)  # map locn -> all the locations found which map to this one 
-        self.__locn2pos = locationpairdict(svwindow)  # map locn -> all the locations found which map to this one 
-        self.__records = locationpairdict(svwindow)   # all the records involving this location
+        # map locn -> allele (ref/alt)
+        self.__alleledict = LocationDict(awindow)
+
+        # map locn -> locn (for SVs - paired breakpoints)
+        self.__svdict = LocationPairDict(svwindow)
+
+        # map locn -> all the locations found which map to this one
+        self.__locn1pos = LocationPairDict(svwindow)
+        self.__locn2pos = LocationPairDict(svwindow)
+
+        # all the records involving this location
+        self.__records = LocationPairDict(svwindow)
 
     def __medianpos__(self, locn1, locn2):
         def median(l):
@@ -80,8 +100,8 @@ class variantmap(object):
 
         if not (locn1, locn2) in self.__svdict:
             return None, None
-        posn1s = self.__locn1pos[(locn1,locn2)]
-        posn2s = self.__locn2pos[(locn1,locn2)]
+        posn1s = self.__locn1pos[(locn1, locn2)]
+        posn2s = self.__locn2pos[(locn1, locn2)]
         return median(posn1s), median(posn2s)
 
     def __svpresent__(self, locn1, locn2):
@@ -108,7 +128,7 @@ class variantmap(object):
         assert len(vartuple) > 1
         locn = vartuple[0]
         other = vartuple[1]
-        if type(other) is location:
+        if type(other) is Location:
             return self.__svpresent__(locn, other)
         else:
             return self.__allelepresent__(locn, other)
@@ -121,12 +141,12 @@ class variantmap(object):
         locn = vartuple[0]
         other = vartuple[1]
         if other is None:
-            other = location(None,0)
-        if type(other) is location:
+            other = Location(None, 0)
+        if type(other) is Location:
             self.__addsvcaller__(locn, other, caller)
-            self.__locn1pos[(locn,other)] = locn.__pos__
-            self.__locn2pos[(locn,other)] = other.__pos__
-            self.__records[(locn,other)] = (caller, record)
+            self.__locn1pos[(locn, other)] = locn.__pos__
+            self.__locn2pos[(locn, other)] = other.__pos__
+            self.__records[(locn, other)] = (caller, record)
         else:
             self.__addallelecaller__(locn, other, caller)
 
@@ -138,58 +158,62 @@ class variantmap(object):
         else:
             locn = vartuple[0]
             other = vartuple[1]
-            if type(other) is location:
+            if type(other) is Location:
                 return self.__svdict[locn][other]
             else:
                 return self.__alleledict[locn][other]
 
     def __str__(self):
-        output=""
+        output = ""
         for loc in self.__alleledict:
             chrom = loc.__chrom__
             pos = loc.__pos__
             for item in self.__alleledict[loc]:
                 ref, alt = item
-                output+="\t".join([chrom, str(pos), '.', ref, alt])
-                output+="\tCallers="+",".join(self.__alleledict[loc][item])+"\n"
+                output += "\t".join([chrom, str(pos), '.', ref, alt])
+                output += "\tCallers="+",".join(self.__alleledict[loc][item])
+                output += "\n"
 
         for loc1 in self.__svdict:
             chrom1 = loc1.__chrom__
             for loc2 in self.__svdict[loc1]:
                 chrom2 = loc2.__chrom__
-                pos1, pos2 = self.__medianpos__(loc1, loc2) 
-                output+="\t".join([chrom1, str(pos1), '.', 'n', 'n['+chrom2+":"+str(pos2)+'['])
-                output+="\tCallers="+",".join(self.__svdict[loc1][loc2])+"\n"
+                pos1, pos2 = self.__medianpos__(loc1, loc2)
+                output += "\t".join([chrom1, str(pos1), '.', 'n',
+                                     'n['+chrom2+":"+str(pos2)+'['])
+                output += "\tCallers="+",".join(self.__svdict[loc1][loc2])+"\n"
         return output
 
     def __repr__(self):
         return self.__str__()
 
-    # forceSV is here to allow forcing a call that looks like a huge indel to be treated as an SV
+    # forceSV is here to allow forcing a call
+    # that looks like a huge indel to be treated as an SV
     def addrecord(self, record, caller="NA", forceSV=False):
         assert type(record) is vcf.model._Record
 
-        if forceSV or (record.ALT is not None and len(record.ALT) > 0 and type(record.ALT[0]) in [vcf.model._SV, vcf.model._Breakend]):
-            bkptPairs = svvcf.breakpointsFromRecord(record)
-            for pair in bkptPairs:
+        if forceSV or (record.ALT is not None and len(record.ALT) > 0
+          and type(record.ALT[0]) in [vcf.model._SV, vcf.model._Breakend]):
+            bkptpairs = svvcf.breakpoints_fm_record(record)
+            for pair in bkptpairs:
                 self.__setitem__(pair, caller, record)
-        else: 
+        else:
             for alt in record.ALT:
                 if alt is None:
                     continue
-                loc = location(record.CHROM, int(record.POS))
+                loc = Location(record.CHROM, int(record.POS))
                 allele = (record.REF, str(alt))
                 self.__setitem__((loc, allele), caller)
 
     def __iter__(self):
-        def generatorIterator():
+        def gen_iterator():
             for loc in self.__alleledict:
                 for allele in self.__alleledict[loc]:
                     yield loc, allele, self.__alleledict[loc][allele]
             for loc1 in self.__svdict:
                 for loc2 in self.__svdict[loc1]:
                     pos1, pos2 = self.__medianpos__(loc1, loc2)
-                    yield loc1, loc2, self.__svdict[loc1][loc2], pos1, pos2, self.__records[(loc1,loc2)]
+                    yield loc1, loc2, self.__svdict[loc1][loc2], pos1, pos2, self.__records[(loc1, loc2)]
             raise StopIteration()
 
-        return generatorIterator()
+        return gen_iterator()
