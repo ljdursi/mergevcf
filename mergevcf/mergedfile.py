@@ -65,7 +65,7 @@ def bkpt_ref_alt_from_pair(loc1, loc2, refstr="N"):
 
     return refstr, altstr
 
-
+#TODO: refactor
 def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
           filter_chrom=True, no_filter_variants=False):
     """Merge several VCFs from different programs into a new VCF file."""
