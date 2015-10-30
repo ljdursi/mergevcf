@@ -43,7 +43,7 @@ class LocationPairDict(object):
         if not self.__contains__(lpair):
             raise KeyError("Not in location pair dicti")
 
-        locn1 = lpair[0]; locn2 = lpair[1]
+        locn1, locn2 = lpair[0], lpair[1]
         return self.__lpdict[locn1][locn2]
 
     def __setitem__(self, lpair, entry):
@@ -58,9 +58,11 @@ class LocationPairDict(object):
         self.__lpdict[locn1][locn2].append(entry)
 
     def keys(self):
+        """return keys of the underlying dictionary"""
         return self.__lpdict.keys()
 
     def __iter__(self):
+        """return iterator of the underlying dictionary"""
         return self.__lpdict.__iter__()
 
 #    def __next__(self):
@@ -90,13 +92,16 @@ class VariantMap(object):
         self.__records = LocationPairDict(svwindow)
 
     def __medianpos__(self, locn1, locn2):
-        def median(l):
-            mid = len(l) // 2
-            ls = sorted(l)
-            if len(ls) % 2 == 0:
-                return (ls[mid-1] + ls[mid]) // 2
+        """Returns the median start and end positions
+        for the breakpoint at (l1,l2)"""
+        def median(lst):
+            """Median of an (integer) list"""
+            mid = len(lst) // 2
+            slst = sorted(lst)
+            if len(slst) % 2 == 0:
+                return (slst[mid-1] + slst[mid]) // 2
             else:
-                return ls[mid]
+                return slst[mid]
 
         if not (locn1, locn2) in self.__svdict:
             return None, None
@@ -105,17 +110,21 @@ class VariantMap(object):
         return median(posn1s), median(posn2s)
 
     def __svpresent__(self, locn1, locn2):
+        """Is an SV given by (l1, l2) present? """
         return (locn1, locn2) in self.__svdict
 
     def __allelepresent__(self, locn, allele):
+        """Is an allele (SNV,Indel) given by l1, allele present? """
         if not locn in self.__alleledict:
             return False
         return allele in self.__alleledict[locn]
 
     def __addsvcaller__(self, locn1, locn2, caller):
+        """Add label `caller' to the SV at (l1, l2)"""
         self.__svdict[(locn1, locn2)] = caller
 
     def __addallelecaller__(self, locn, allele, caller):
+        """Add label `caller' to the allele at (l, allele)"""
         if not locn in self.__alleledict:
             self.__alleledict[locn] = {}
         if not allele in self.__alleledict[locn]:
@@ -163,6 +172,7 @@ class VariantMap(object):
             else:
                 return self.__alleledict[locn][other]
 
+    # TODO: this isn't a proper str/repr pair
     def __str__(self):
         output = ""
         for loc in self.__alleledict:
@@ -189,10 +199,12 @@ class VariantMap(object):
 
     # forceSV is here to allow forcing a call
     # that looks like a huge indel to be treated as an SV
-    def addrecord(self, record, caller="NA", forceSV=False):
+    def addrecord(self, record, caller="NA", force_sv=False):
+        """Ingest a VCF record, with a given label/caller;
+           force it to be an SV if force_sv == True"""
         assert type(record) is vcf.model._Record
 
-        if forceSV or (record.ALT is not None and len(record.ALT) > 0
+        if force_sv or (record.ALT is not None and len(record.ALT) > 0
           and type(record.ALT[0]) in [vcf.model._SV, vcf.model._Breakend]):
             bkptpairs = svvcf.breakpoints_fm_record(record)
             for pair in bkptpairs:
@@ -206,6 +218,7 @@ class VariantMap(object):
                 self.__setitem__((loc, allele), caller)
 
     def __iter__(self):
+        """Iterate over all variants - first SNV/Indels, then SVs"""
         def gen_iterator():
             for loc in self.__alleledict:
                 for allele in self.__alleledict[loc]:
@@ -213,7 +226,8 @@ class VariantMap(object):
             for loc1 in self.__svdict:
                 for loc2 in self.__svdict[loc1]:
                     pos1, pos2 = self.__medianpos__(loc1, loc2)
-                    yield loc1, loc2, self.__svdict[loc1][loc2], pos1, pos2, self.__records[(loc1, loc2)]
+                    yield (loc1, loc2, self.__svdict[loc1][loc2],
+                           pos1, pos2, self.__records[(loc1, loc2)])
             raise StopIteration()
 
         return gen_iterator()

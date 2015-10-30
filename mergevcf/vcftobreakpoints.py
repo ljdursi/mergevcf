@@ -22,7 +22,7 @@ def stdchrom(chrom):
 def order_breakpoints(loc1, loc2):
     """
     Normalizes two breakpoints by ordering them lexicographically,
-    flipping the half-interval between them if necessary, 
+    flipping the half-interval between them if necessary,
     and ensuring the first is on the positive strand.
     """
     # already ordered?  Just return them
@@ -36,9 +36,12 @@ def order_breakpoints(loc1, loc2):
 
     return (first, second)
 
-def otherPosnSymbolic(info):
-
-    def getIfPresent(name, infodict):
+def other_posn_from_info(info):
+    """Extract information about the other position in the breakpoint
+       from the record INFO field"""
+    def get_if_present(name, infodict):
+        """Return the value corresponding to a key from the infodict
+           if present, and the first value if a list"""
         res = None
         if name in infodict:
             res = infodict[name]
@@ -49,14 +52,14 @@ def otherPosnSymbolic(info):
     fields = ['CHR2', 'END', 'CT', 'SVTYPE', 'SVLEN']
     results = []
     for field in fields:
-        results.append(getIfPresent(field, info))
+        results.append(get_if_present(field, info))
 
     # handle chr2 specially
     if results[0] is not None:
         results[0] = stdchrom(results[0])
 
     # svclass overrides svtype
-    svclass = getIfPresent('SVCLASS', info)
+    svclass = get_if_present('SVCLASS', info)
     if svclass is not None:
         results[3] = svclass
 
@@ -101,18 +104,18 @@ def ctAndLocFromBkpt(ref, pre, delim1, pair, delim2, post):
 
     if joined_after:
         if extend_right:
-            connection_type = '3to5'
+            connect_type = '3to5'
         else:
-            connection_type = '3to3'
+            connect_type = '3to3'
     else:
         if extend_right:
-            connection_type = '5to5'
+            connect_type = '5to5'
         else:
-            connection_type = '5to3'
+            connect_type = '5to3'
 
-    return connection_type, chr2, pos2, indellen
+    return connect_type, chr2, pos2, indellen
 
-def translocation(chr1, pos1, chr2, pos2, connection_type):
+def translocation(chr1, pos1, chr2, pos2, connect_type):
     """
     Returns a pair of locations corresponding to the two chr/pos pairs
     and the connection type.  Deterimines the strands and half intervals
@@ -120,19 +123,19 @@ def translocation(chr1, pos1, chr2, pos2, connection_type):
     which is output by many callers.
     """
     second_strand = "+"
-    first_extend_right = False
-    second_extend_right = True
-    if connection_type is None or connection_type == '3to5':
+    first_ext_right = False
+    second_ext_right = True
+    if connect_type is None or connect_type == '3to5':
         pass
-    elif connection_type == '5to3':
-        first_extend_right, second_extend_right = (True, False)
-    elif connection_type == '5to5':
-        first_extend_right, second_extend_right, second_strand = (True, True, '-')
-    elif connection_type == '3to3':
-        first_extend_right, second_extend_right, second_strand = (False, False, '-')
+    elif connect_type == '5to3':
+        first_ext_right, second_ext_right = (True, False)
+    elif connect_type == '5to5':
+        first_ext_right, second_ext_right, second_strand = (True, True, '-')
+    elif connect_type == '3to3':
+        first_ext_right, second_ext_right, second_strand = (False, False, '-')
 
-    return (loc.Location(chr1, pos1, "+", first_extend_right),
-            loc.Location(chr2, pos2, second_strand, second_extend_right))
+    return (loc.Location(chr1, pos1, "+", first_ext_right),
+            loc.Location(chr2, pos2, second_strand, second_ext_right))
 
 #TODO: refactor
 def breakpoints_fm_record(record):
@@ -153,25 +156,25 @@ def breakpoints_fm_record(record):
             altstr = str(alt)
 
         # get all available information from the record
-        chr2, pos2, connection_type, svtype, svlen = otherPosnSymbolic(record.INFO)
+        chr2, pos2, connect_type, svtype, svlen = other_posn_from_info(record.INFO)
 
         # defaults
         if chr2 is None:
             chr2 = chr1
 
         # look for symbolic SVTYPE information in the alt field (eg, <DEL>)
-        resultSym = re.match(__symbolicRE__, altstr)
-        if resultSym:
-            svtype = resultSym.group(1)
+        result_sym = re.match(__symbolicRE__, altstr)
+        if result_sym:
+            svtype = result_sym.group(1)
 
         # explicit BP - look for chr2 and CT information from the alt field
         # (eg, N[chr2:123123[)
-        resultBP = re.match(__bpRE__, altstr)
-        if resultBP:
-            connection_type, chr2, pos2, indellen = ctAndLocFromBkpt(str(record.REF),
-                                           resultBP.group(1), resultBP.group(2),
-                                           resultBP.group(3), resultBP.group(4),
-                                           resultBP.group(5))
+        result_bp = re.match(__bpRE__, altstr)
+        if result_bp:
+            connect_type, chr2, pos2, indellen = ctAndLocFromBkpt(str(record.REF),
+                                       result_bp.group(1), result_bp.group(2),
+                                       result_bp.group(3), result_bp.group(4),
+                                       result_bp.group(5))
             if svlen is None:
                 svlen = indellen
 
@@ -179,12 +182,12 @@ def breakpoints_fm_record(record):
         resultLE = __looseendRE__.search(str(record.FILTER))
         if altstr == ref+"." or resultLE:
             chr2, pos2 = (None, 0)
-            if connection_type is None:
-                connection_type = '5to3'
+            if connect_type is None:
+                connect_type = '5to3'
         if altstr == "."+ref:
             chr2, pos2 = (None, 0)
-            if connection_type is None:
-                connection_type = '3to5'
+            if connect_type is None:
+                connect_type = '3to5'
 
         # if nothing else, treat as an indel
         if not svtype and not resultBP and not resultLE and not resultSym:
@@ -206,12 +209,12 @@ def breakpoints_fm_record(record):
         elif svtype in ["DUP:TANDEM", "DUP"]:
             if chr2 is None:
                 chr2 = chr1
-            if connection_type is None or connection_type == "5to3" or connection_type == "3to5":
+            if connect_type is None or connect_type == "5to3" or connect_type == "3to5":
                 if pos1 > pos2:
                     pos1, pos2 = pos2, pos1
                 breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, "5to3"))
             else:
-                breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, connection_type))
+                breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, connect_type))
         elif svtype in ["INS", "INS:ME:L1"]:
             assert chr1 == chr2
             breakpoint_pairs.append((first, loc.Location(chr1, pos1+1, "+", True)))
@@ -221,13 +224,13 @@ def breakpoints_fm_record(record):
                                            max(pos1, pos2), '3to5'))
         else:
             # translocation is the default
-            if connection_type is None:
-                connection_type = "3to5"
+            if connect_type is None:
+                connect_type = "3to5"
             if (svtype is not None) and (not svtype in ["TRA", "BND"]):
                 print("Got unknown record of type",
                         svtype, altstr, str(record), file=sys.stderr)
                 print("Hoping for best", file=sys.stderr)
-            breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, connection_type))
+            breakpoint_pairs.append(translocation(chr1, pos1, chr2, pos2, connect_type))
 
     return [order_breakpoints(bp1, bp2) for bp1, bp2 in breakpoint_pairs]
 
