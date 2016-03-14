@@ -1,9 +1,14 @@
-from locations import *
+"""
+Definitions for a dictionary of variants, and operations on them
+"""
+from mergevcf.locations import locationdict, location
 import vcf
-import itertools
-import vcftobreakpoints as svvcf
+import mergevcf.vcftobreakpoints as svvcf
 
 def __checkvalidpairlocs__(t):
+    """
+    Returns true if t is a tuple of 2 locations, false otherwise
+    """
     if type(t) is not tuple:
         return False
     if len(t) != 2:
@@ -54,10 +59,6 @@ class locationpairdict(object):
     def __iter__(self):
         return self.__lpdict.__iter__()
 
-    def __next__(self):
-        return self.__lpdict.__next()
-    
-
 class variantmap(object):
     def __init__(self, awindow, svwindow):
         self.__awindow = awindow
@@ -80,8 +81,8 @@ class variantmap(object):
 
         if not (locn1, locn2) in self.__svdict:
             return None, None
-        posn1s = self.__locn1pos[(locn1,locn2)]
-        posn2s = self.__locn2pos[(locn1,locn2)]
+        posn1s = self.__locn1pos[(locn1, locn2)]
+        posn2s = self.__locn2pos[(locn1, locn2)]
         return median(posn1s), median(posn2s)
 
     def __svpresent__(self, locn1, locn2):

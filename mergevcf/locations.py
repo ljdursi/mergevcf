@@ -94,7 +94,7 @@ class locationdict(dict):
         super(locationdict,self).__init__(*args, **kwargs)
 
     def keys(self):
-        return super(locationdict,self).keys()
+        return super(locationdict, self).keys()
 
     def values(self):
         return [self[key] for key in self]
@@ -108,7 +108,7 @@ class locationdict(dict):
         present = False
         foundoff = None
         for off in self.__search:
-            if super(locationdict,self).__contains__( locn+off ):
+            if super(locationdict, self).__contains__(locn+off):
                 present = True
                 foundoff = off
         return present, foundoff
@@ -126,4 +126,4 @@ class locationdict(dict):
         if not present:
             raise KeyError(locn.__str__())
         else:
-            return super(locationdict,self).__getitem__(locn + foundoff)
+            return super(locationdict, self).__getitem__(locn + foundoff)
