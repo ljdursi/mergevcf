@@ -138,7 +138,7 @@ def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
                 continue
             chrom, pos, _, _ = loc.asTuple()
             vcfline = "\t".join([chrom, str(pos), ".", allele[0], allele[1],
-                                 "255", filterstring,
+                                 ".", filterstring,
                                  "Callers=" + ",".join(callers)])
             if output_ncallers:
                 vcfline += ";NumCallers="+str(len(set(callers)))
@@ -154,7 +154,7 @@ def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
             avgloc2 = loc2.withPos(medianPos2)
             ref, alt = bkptRefAltFromPair(avgloc1, avgloc2)
             vcfline = "\t".join([avgloc1.__chrom__, str(avgloc1.__pos__), '.',
-                ref, alt, '255', filterstring,
+                ref, alt, '.', filterstring,
                 infoString(callers, make_info_dict(records, medianPos1, medianPos2))])
             outfile.write(vcfline + "\n")
             for caller, rec in recordscalled:
