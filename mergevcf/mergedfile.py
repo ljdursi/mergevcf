@@ -123,7 +123,9 @@ def merge(filenames, programs, forceSV, outfile, slop=0, verbose=True,
     outfile.write('##INFO=<ID=Callers,Number=.,Type=String,Description="Callers that made this call">\n')
     if output_ncallers:
         outfile.write('##INFO=<ID=NumCallers,Number=1,Type=Integer,Description="Number of callers that made this call">\n')
-    outfile.write("#CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO\n")
+    if min_num_callers > 0:
+        outfile.write('##FILTER=<ID=LOWSUPPORT,Description="Not called by enough callers in ensemble">\n')
+    outfile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
 
     for variant in calldict:
         callers = variant[2]
