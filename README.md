@@ -1,6 +1,6 @@
 ## Merge VCFs
 
-**Note!** An improved and better maintained fork of this code can be found at https://github.com/papaemmelab/mergeSVvcf
+**Note!** Please use a real tool for this such as https://github.com/mkirsche/Jasmine.  If you must use something along the lines of this tool, an improved and better maintained fork of this code can be found at https://github.com/papaemmelab/mergeSVvcf.
 
 This set of routines merges VCF files by calls, labelling calls by the callers that
 made them in an `INFO` field, `Callers=`.   Most of the work goes into normalizing
